@@ -232,7 +232,25 @@
         const [cls,badge]=toBadge(status); const delay=((status||'').match(/(\d+)\s*min/)||[])[1];
         const eta=parseTimeToDate(s.arrive,new Date()); let etaTxt=s.arrive||'—'; if(eta && delay){ eta.setMinutes(eta.getMinutes()+parseInt(delay,10)); etaTxt=fmtTime(eta); }
         return Object.assign({},s,{status,badgeClass:cls,badgeText:badge,etaTxt}); }); }
+function fromNtaOnly(ntaTrips){
+  return (ntaTrips || []).map(n => {
+    const depart = n.orig_departure_time || n.orig_time || n.departure_time || n.OrigSchDep;
+    const arrive = n.term_arrival_time || n.arrival_time || n.TermSchArr;
+    const line   = n.orig_line || n.line || n.route || n.branch;
+    const train  = n.orig_train || n.train_id || n.train;
+    const status = n.status || n.orig_delay || n.term_status || n.term_delay || '—';
+    const [cls, badge] = toBadge(status);
 
+    // compute ETA if delay present (e.g., "5 min late")
+    const m = (status || '').toLowerCase().match(/(\d+)\s*min/);
+    let etaTxt = arrive || '—';
+    if (m && arrive) {
+      const dt = parseTimeToDate(arrive, new Date());
+      if (dt) { dt.setMinutes(dt.getMinutes() + parseInt(m[1],10)); etaTxt = fmtTime(dt); }
+    }
+    return { depart, arrive, line, train, status, badgeClass: cls, badgeText: badge, etaTxt };
+  });
+}
     async function run(){ const fromName=fromSel.value, toName=toSel.value; if(!fromName||!toName) return; if(fromName===toName) return alert('Choose two different stations.');
       const from=findParam(fromName), to=findParam(toName); const hours=parseInt(horizonSel.value,10)||2;
       results.innerHTML='<div class="card">Loading…</div>';
@@ -246,7 +264,10 @@
       if(!Array.isArray(schedToday)) schedToday=[]; if(!Array.isArray(schedTomorrow)) schedTomorrow=[]; if(!Array.isArray(nta)) nta=[];
       const schedule=normalizeSchedule(schedToday).concat(normalizeSchedule(schedTomorrow));
       const filtered=horizonFilter(schedule,now,end); const merged=mergeLive(filtered,nta);
-      render(merged); lastUpdated.textContent='Updated '+new Date().toLocaleTimeString(); }
+      // Fallback: if schedule returned nothing, show NTA-only trips
+const finalItems = merged.length ? merged : fromNtaOnly(nta);
+render(finalItems);
+ lastUpdated.textContent='Updated '+new Date().toLocaleTimeString(); }
 
     function render(items){ if(!items.length){ results.innerHTML='<div class="card">No trips in this window.</div>'; return; }
       results.innerHTML=''; items.forEach(it=>{ const div=document.createElement('div'); div.className='card';
