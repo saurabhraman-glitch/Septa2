@@ -1,0 +1,265 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SEPTA — Full Day + Live</title>
+  <meta name="theme-color" content="#0b1320"/>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon-192.png" sizes="192x192">
+  <style>
+    body{margin:0;background:#0b1320;color:#e8f0ff;font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+    header{padding:18px 16px;background:#0b1320;position:sticky;top:0;border-bottom:1px solid #1d2b4a}
+    main{max-width:980px;margin:0 auto;padding:16px}
+    .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
+    input,select,button{background:#0f1d37;border:1px solid #1d2b4a;color:#e8f0ff;padding:10px 12px;border-radius:10px}
+    .grid{display:grid;grid-template-columns:1fr;gap:10px} @media (min-width:800px){.grid{grid-template-columns:1fr 1fr}}
+    .card{background:#111a2b;border:1px solid #1d2b4a;border-radius:12px;padding:12px}
+    .row{display:flex;justify-content:space-between;gap:8px;align-items:center}
+    .sub{color:#8aa0c5;font-size:13px}
+    .badge{border-radius:999px;padding:4px 10px;font-size:12px;border:1px solid #264066}
+    .good{background:#13251d;border-color:#235e45;color:#70f0b1}
+    .warn{background:#2a220f;border-color:#6d4e12;color:#ffd27a}
+    .bad{background:#2a1313;border-color:#7a2a2a;color:#ff9b9b}
+    .favbar{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 12px}
+    .chip{display:inline-flex;align-items:center;gap:6px;background:#0f1d37;border:1px solid #1d2b4a;border-radius:999px;padding:6px 10px;cursor:pointer}
+    .chip .x{font-size:14px;opacity:.7;cursor:pointer}
+    .small{font-size:12px;color:#8aa0c5}
+  </style>
+</head>
+<body>
+  <header><strong>SEPTA — Full Day Schedule + Live Status</strong></header>
+  <main>
+    <div class="controls">
+      <label class="small">From <input id="from" list="stations" value="Elkins Park" autocomplete="off"></label>
+      <label class="small">To <input id="to" list="stations" value="Suburban Station" autocomplete="off"></label>
+      <datalist id="stations"></datalist>
+      <label class="small">Show
+        <select id="horizon">
+          <option value="2">Next 2 hours</option>
+          <option value="6">Next 6 hours</option>
+          <option value="24" selected>Next 24 hours</option>
+        </select>
+      </label>
+      <button id="swap">↕︎ Swap</button>
+      <button id="saveFav">★ Save as favorite</button>
+      <button id="refresh">Refresh</button>
+      <span id="lastUpdated" class="small" aria-live="polite"></span>
+    </div>
+
+    <div id="favbar" class="favbar"></div>
+    <div class="small">Full schedules via Netlify Function + live Next-To-Arrive merged in.</div>
+    <div id="results" class="grid" role="list"></div>
+  </main>
+
+  <script>
+    if ('serviceWorker' in navigator) window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+    const API_BASE='/.netlify/functions/septa';
+    const NTA_STATIONS=[{name:"30th Street Station", param:"30th Street Station"},
+      {name:"Suburban Station", param:"Suburban Station"},
+      {name:"Jefferson Station (Market East)", param:"Market East"},
+      {name:"Temple University", param:"Temple U"},
+      {name:"Elkins Park", param:"Elkins Park"},
+      {name:"Jenkintown-Wyncote", param:"Jenkintown-Wyncote"},
+      {name:"Glenside", param:"Glenside"},
+      {name:"Melrose Park", param:"Melrose Park"},
+      {name:"Warminster", param:"Warminster"},
+      {name:"Doylestown", param:"Doylestown"},
+      {name:"Conshohocken", param:"Conshohocken"},
+      {name:"Norristown Transportation Center", param:"Norristown TC"},
+      {name:"Airport Terminal A", param:"Airport Terminal A"},
+      {name:"Airport Terminal B", param:"Airport Terminal B"},
+      {name:"Airport Terminals C & D", param:"Airport Terminal C-D"},
+      {name:"Airport Terminals E & F", param:"Airport Terminal E-F"},
+      {name:"Villanova", param:"Villanova"},
+      {name:"Radnor", param:"Radnor"},
+      {name:"Wayne", param:"Wayne"},
+      {name:"Paoli", param:"Paoli"},
+      {name:"Malvern", param:"Malvern"},
+      {name:"Exton", param:"Exton"},
+      {name:"Downingtown", param:"Downingtown"},
+      {name:"Thorndale", param:"Thorndale"},
+      {name:"Fox Chase", param:"Fox Chase"},
+      {name:"Chestnut Hill East", param:"Chestnut Hill East"},
+      {name:"Chestnut Hill West", param:"Chestnut Hill West"},
+      {name:"Wilmington", param:"Wilmington"},
+      {name:"Newark", param:"Newark"},
+      {name:"Marcus Hook", param:"Marcus Hook"},
+      {name:"Trenton Transit Center", param:"Trenton"},
+      {name:"Levittown", param:"Levittown"},
+      {name:"Bristol", param:"Bristol"},
+      {name:"Croydon", param:"Croydon"},
+      {name:"Langhorne", param:"Langhorne"},
+      {name:"Woodbourne", param:"Woodbourne"},
+      {name:"Neshaminy Falls", param:"Neshaminy Falls"},
+      {name:"Trevose", param:"Trevose"},
+      {name:"Somerton", param:"Somerton"},
+      {name:"Philmont", param:"Philmont"},
+      {name:"Forest Hills", param:"Forest Hills"},
+      {name:"Holmesburg Junction", param:"Holmesburg Jct"},
+      {name:"Tacony", param:"Tacony"},
+      {name:"Bridesburg", param:"Bridesburg"},
+      {name:"North Philadelphia", param:"North Philadelphia"},
+      {name:"North Broad", param:"North Broad St"},
+      {name:"Wynnewood", param:"Wynnewood"},
+      {name:"Narberth", param:"Narberth"},
+      {name:"Merion", param:"Merion"},
+      {name:"Overbrook", param:"Overbrook"},
+      {name:"Wynnefield Avenue", param:"Wynnefield Avenue"},
+      {name:"Penn Medicine Station (University City)", param:"Penn Medicine Station"},
+      {name:"Eastwick Station", param:"Eastwick Station"},
+      {name:"Sharon Hill", param:"Sharon Hill"},
+      {name:"Folcroft", param:"Folcroft"},
+      {name:"Glenolden", param:"Glenolden"},
+      {name:"Prospect Park", param:"Prospect Park"},
+      {name:"Ridley Park", param:"Ridley Park"},
+      {name:"Norwood", param:"Norwood"},
+      {name:"Germantown", param:"Germantown"},
+      {name:"Allen Lane", param:"Allen Lane"},
+      {name:"Upsal", param:"Upsal"},
+      {name:"Tulpehocken", param:"Tulpehocken"},
+      {name:"Sedgwick", param:"Sedgwick"},
+      {name:"Stenton", param:"Stenton"},
+      {name:"Wister", param:"Wister"},
+      {name:"Queen Lane", param:"Queen Lane"},
+      {name:"Wayne Junction", param:"Wayne Jct"},
+      {name:"Chelten Avenue", param:"Chelten Avenue"},
+      {name:"Carpenter", param:"Carpenter"},
+      {name:"Mt Airy", param:"Mt Airy"},
+      {name:"Gravers", param:"Gravers"},
+      {name:"Wyndmoor", param:"Wyndmoor"},
+      {name:"St. Martins", param:"St. Martins"},
+      {name:"Media", param:"Media"},
+      {name:"Moylan-Rose Valley", param:"Moylan-Rose Valley"},
+      {name:"Wallingford", param:"Wallingford"},
+      {name:"Swarthmore", param:"Swarthmore"},
+      {name:"Morton", param:"Morton"},
+      {name:"Secane", param:"Secane"},
+      {name:"Primos", param:"Primos"},
+      {name:"Clifton-Aldan", param:"Clifton-Aldan"},
+      {name:"Lansdowne", param:"Lansdowne"},
+      {name:"Gladstone", param:"Gladstone"},
+      {name:"Darby", param:"Darby"},
+      {name:"Elwyn", param:"Elwyn Station"},
+      {name:"Cynwyd", param:"Cynwyd"},
+      {name:"Ivy Ridge", param:"Ivy Ridge"},
+      {name:"Manayunk", param:"Manayunk"},
+      {name:"Wissahickon", param:"Wissahickon"},
+      {name:"East Falls", param:"East Falls"},
+      {name:"Allegheny", param:"Allegheny"},
+      {name:"North Hills", param:"North Hills"},
+      {name:"Oreland", param:"Oreland"},
+      {name:"Fort Washington", param:"Ft Washington"},
+      {name:"Ambler", param:"Ambler"},
+      {name:"Penllyn", param:"Penllyn"},
+      {name:"Gwynedd Valley", param:"Gwynedd Valley"},
+      {name:"North Wales", param:"North Wales"},
+      {name:"Pennbrook", param:"Pennbrook"},
+      {name:"Lansdale", param:"Lansdale"},
+      {name:"Colmar", param:"Colmar"},
+      {name:"Fortuna", param:"Fortuna"},
+      {name:"Link Belt", param:"Link Belt"},
+      {name:"Chalfont", param:"Chalfont"},
+      {name:"New Britain", param:"New Britain"},
+      {name:"Delaware Valley College", param:"Delaware Valley College"},
+      {name:"Daylesford", param:"Daylesford"},
+      {name:"Strafford", param:"Strafford"},
+      {name:"St. Davids", param:"St. Davids"},
+      {name:"Rosemont", param:"Rosemont"},
+      {name:"Bryn Mawr", param:"Bryn Mawr"},
+      {name:"Haverford", param:"Haverford"},
+      {name:"Ardmore", param:"Ardmore"}];
+
+    const fromSel=document.getElementById('from');
+    const toSel=document.getElementById('to');
+    const stationDatalist=document.getElementById('stations');
+    const results=document.getElementById('results');
+    const lastUpdated=document.getElementById('lastUpdated');
+    const swapBtn=document.getElementById('swap');
+    const saveFavBtn=document.getElementById('saveFav');
+    const refreshBtn=document.getElementById('refresh');
+    const horizonSel=document.getElementById('horizon');
+    const favbar=document.getElementById('favbar');
+
+    const FKEY='septa_favorites_v1';
+    function loadFavs(){ try{return JSON.parse(localStorage.getItem(FKEY))||[];}catch{return [];} }
+    function saveFavs(f){ localStorage.setItem(FKEY, JSON.stringify(f)); }
+    function ensureDefaults(){ const f=loadFavs(); const d=[{from:'Elkins Park',to:'Suburban Station'},{from:'Suburban Station',to:'Elkins Park'}];
+      let changed=false; d.forEach(x=>{ if(!f.find(y=>y.from===x.from&&y.to===x.to)){f.push(x);changed=true;} }); if(changed) saveFavs(f); }
+    function renderFavs(){ favbar.innerHTML=''; loadFavs().forEach((fav,i)=>{
+      const chip=document.createElement('span'); chip.className='chip';
+      chip.innerHTML=`<span>⭐ ${fav.from} → ${fav.to}</span> <span class="x" title="Remove">×</span>`;
+      chip.addEventListener('click',(e)=>{ if(e.target.classList.contains('x'))return; fromSel.value=fav.from; toSel.value=fav.to; run(); });
+      chip.querySelector('.x').addEventListener('click',(e)=>{ e.stopPropagation(); const arr=loadFavs().filter((_,idx)=>idx!==i); saveFavs(arr); renderFavs(); });
+      favbar.appendChild(chip);
+    });}
+
+    function populate(){ stationDatalist.innerHTML=''; const ordered=NTA_STATIONS.map(s=>s.name).sort((a,b)=>a.localeCompare(b));
+      ordered.forEach(n=>{ const opt=document.createElement('option'); opt.value=n; stationDatalist.appendChild(opt); }); }
+    function findParam(name){ const n=(name||'').trim().toLowerCase(); const hit=NTA_STATIONS.find(s=>s.name.toLowerCase()===n); return hit?hit.param:name; }
+
+    swapBtn.addEventListener('click',()=>{ const f=fromSel.value; fromSel.value=toSel.value; toSel.value=f; run(); });
+    saveFavBtn.addEventListener('click',()=>{ const from=fromSel.value.trim(), to=toSel.value.trim(); if(!from||!to||from===to) return alert('Pick two different stations first.');
+      const f=loadFavs(); if(!f.find(x=>x.from===from&&x.to===to)){ f.unshift({from,to}); if(f.length>8) f.pop(); saveFavs(f); renderFavs(); } else alert('Already in favorites.'); });
+    refreshBtn.addEventListener('click',run);
+    fromSel.addEventListener('change',run);
+    toSel.addEventListener('change',run);
+    horizonSel.addEventListener('change',run);
+
+    function ymd(d){ return d.toISOString().slice(0,10); }
+    function fmtTime(d){ if(!d) return '—'; let h=d.getHours(), m=String(d.getMinutes()).padStart(2,'0'); const ap=h>=12?'PM':'AM'; h=h%12||12; return `${h}:${m}${ap}`; }
+    function parseTimeToDate(t, ref){ if(!t) return null; const b=new Date(ref.getFullYear(),ref.getMonth(),ref.getDate(),0,0,0,0);
+      const m=(t+'').trim().match(/^(\d{1,2}):(\d{2})(?:\s*([AP]M))?$/i); if(!m) return null;
+      let hh=parseInt(m[1],10), mm=parseInt(m[2],10); const ap=(m[3]||'').toUpperCase();
+      if(ap){ if(ap==='PM'&&hh<12) hh+=12; if(ap==='AM'&&hh===12) hh=0; } const d=new Date(b); d.setHours(hh,mm,0,0); return d; }
+
+    function normalizeSchedule(arr){ const out=[]; (arr||[]).forEach(r=>{
+      const depart=r.departure_time||r.orig_departure_time||r.depart_time||r.orig_time||r.time_departure;
+      const arrive=r.arrival_time||r.term_arrival_time||r.time_arrival;
+      const line=r.line||r.route||r.branch; const train=r.train||r.train_id||r.orig_train;
+      if(depart||arrive) out.push({depart,arrive,line,train}); }); return out; }
+    function horizonFilter(trips,start,end){ return trips.filter(t=>{ const dt=parseTimeToDate(t.depart,start); let d=dt;
+      if(d && d.getTime()<start.getTime()-2*3600*1000) d=new Date(d.getTime()+86400000);
+      return d && d>=new Date(start.getTime()-5*60000) && d<=end; }); }
+    function toBadge(status){ const s=(status||'').toLowerCase();
+      if(/cancel/.test(s)) return ['bad','Canceled']; if(/suspend/.test(s)) return ['bad','Suspended']; if(/on[- ]?time/.test(s)) return ['good','On time'];
+      const m=s.match(/(\d+)\s*min/); if(m) return ['warn',`${parseInt(m[1],10)} min late`]; return ['warn',status||'Scheduled']; }
+    function mergeLive(scheduleTrips,ntaTrips){ const idx={}; (ntaTrips||[]).forEach(n=>{ const depart=n.orig_departure_time||n.orig_time||n.departure_time||n.OrigSchDep;
+      const train=n.orig_train||n.train_id||n.train; const key=(depart||'')+'|'+(train||''); idx[key]=n; });
+      return scheduleTrips.map(s=>{ const key=(s.depart||'')+'|'+(s.train||''); const live=idx[key]||null;
+        const status=live?(live.status||live.orig_delay||live.term_status||live.term_delay||'On time'):'Scheduled';
+        const [cls,badge]=toBadge(status); const delay=((status||'').match(/(\d+)\s*min/)||[])[1];
+        const eta=parseTimeToDate(s.arrive,new Date()); let etaTxt=s.arrive||'—'; if(eta && delay){ eta.setMinutes(eta.getMinutes()+parseInt(delay,10)); etaTxt=fmtTime(eta); }
+        return Object.assign({},s,{status,badgeClass:cls,badgeText:badge,etaTxt}); }); }
+
+    async function run(){ const fromName=fromSel.value, toName=toSel.value; if(!fromName||!toName) return; if(fromName===toName) return alert('Choose two different stations.');
+      const from=findParam(fromName), to=findParam(toName); const hours=parseInt(horizonSel.value,10)||2;
+      results.innerHTML='<div class="card">Loading…</div>';
+      const now=new Date(); const end=new Date(now.getTime()+hours*3600*1000);
+      const p=[fetch(`${API_BASE}?type=schedule&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&date=${ymd(now)}`).then(r=>r.json())];
+      if(end.getDate()!=now.getDate()){ const tmr=new Date(now); tmr.setDate(now.getDate()+1);
+        p.push(fetch(`${API_BASE}?type=schedule&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&date=${ymd(tmr)}`).then(r=>r.json())); }
+      else p.push(Promise.resolve([]));
+      p.push(fetch(`${API_BASE}?type=nta&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&count=200`).then(r=>r.json()));
+      let [schedToday,schedTomorrow,nta]=await Promise.all(p);
+      if(!Array.isArray(schedToday)) schedToday=[]; if(!Array.isArray(schedTomorrow)) schedTomorrow=[]; if(!Array.isArray(nta)) nta=[];
+      const schedule=normalizeSchedule(schedToday).concat(normalizeSchedule(schedTomorrow));
+      const filtered=horizonFilter(schedule,now,end); const merged=mergeLive(filtered,nta);
+      render(merged); lastUpdated.textContent='Updated '+new Date().toLocaleTimeString(); }
+
+    function render(items){ if(!items.length){ results.innerHTML='<div class="card">No trips in this window.</div>'; return; }
+      results.innerHTML=''; items.forEach(it=>{ const div=document.createElement('div'); div.className='card';
+        div.innerHTML=`<div class="row">
+          <div>
+            <div><strong>${it.depart||'—'} → ${it.arrive||'—'}</strong></div>
+            <div class="sub">${it.line?it.line+' line • ':''}${it.train?'Train '+it.train:''}</div>
+            <div class="sub">Expected arrival: <strong>${it.etaTxt}</strong>${it.arrive&&it.etaTxt!==it.arrive?' (sched '+it.arrive+')':''}</div>
+          </div>
+          <div class="badge ${it.badgeClass}" title="${it.status||''}">${it.badgeText}</div>
+        </div>`; results.appendChild(div); }); }
+
+    (function(){ populate(); ensureDefaults(); renderFavs(); run(); })();
+  </script>
+</body>
+</html>
